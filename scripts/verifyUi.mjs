@@ -5,6 +5,7 @@ import os from 'node:os';
 
 const SHOTS = path.join(os.tmpdir(), 'sitr-verify');
 await fs.mkdir(SHOTS, { recursive: true });
+const BASE = process.argv[2] || 'http://localhost:5173/';
 
 const browser = await chromium.launch({
   executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -46,7 +47,7 @@ async function loadPreset(name) {
   await page.waitForTimeout(350);
 }
 
-await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForTimeout(700);
 console.log('HTML dir =', await page.locator('html').getAttribute('dir'));
 await screenshot('01-desktop-initial.png');
@@ -129,7 +130,7 @@ await screenshot('10-passphrase-panel.png');
 const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
 const mobileErrors = [];
 mobile.on('pageerror', (error) => mobileErrors.push(error.message));
-await mobile.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await mobile.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await mobile.locator('h1').waitFor({ state: 'visible' });
 await mobile.waitForTimeout(600);
 await mobile.screenshot({ path: path.join(SHOTS, '11-mobile-initial.png'), fullPage: true });

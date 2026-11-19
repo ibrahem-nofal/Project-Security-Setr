@@ -157,10 +157,13 @@ const [download] = await Promise.all([
 ]);
 const packagePath = path.join(SHOTS, 'edge-roundtrip.sitr');
 await download.saveAs(packagePath);
+const exportedKey = await page.locator('#key-hex').inputValue();
 await page.reload({ waitUntil: 'domcontentloaded' });
 await page.locator('h1').waitFor();
 await fileInput.setInputFiles(packagePath);
 await waitForBadge('مشفّرة');
+await page.locator('#key-hex').fill(exportedKey);
+await page.waitForTimeout(200);
 await decryptCta.click();
 await waitForBadge('مستعادة');
 await page.getByTitle('استعادة الصورة الأصلية').click();
