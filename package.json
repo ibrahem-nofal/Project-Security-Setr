@@ -1,0 +1,27 @@
+{
+  "name": "sitr-image-cipher",
+  "version": "1.0.0",
+  "description": "Client-side AES image cryptography lab (ECB / CBC / CTR) with Arabic RTL interface",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:crypto": "node scripts/verifyAes.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+    "lucide-react": "^1.76.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-react": "^6.3.0",
+    "playwright-core": "^1.65.1",
+    "tailwindcss": "^4.3.5",
+    "vite": "^8.3.8"
+  },
+  "private": true
+}
