@@ -545,6 +545,109 @@ export function decryptImage({ cipher, mode, key, iv, onProgress = () => {} }) {
   };
 }
 
+/**
+ * Locate the authenticated payload header inside a decrypted byte stream.
+ *
+ * Encrypted PNGs contain `ciphertext` mapped 1:1 to RGB bytes. The PNG may
+ * be slightly larger than the ciphertext (trailing zero padding), so we
+ * cannot use "header at the end". Instead we scan for the 8-byte magic and
+ * require the header to be fully self-consistent: the header must begin
+ * exactly at the declared RGB length, the mode/key size must match, and the
+ * PKCS#7 padding that follows the header must be valid.
+ */
+function locateImageHeader(plain, mode, keyBits) {
+  const lastOffset = plain.length - HEADER_SIZE;
+  for (let offset = 0; offset <= lastOffset; offset += 1) {
+    if (plain[offset] !== MAGIC[0]) continue;
+    let magicMatches = true;
+    for (let i = 1; i < MAGIC.length; i += 1) {
+      if (plain[offset + i] !== MAGIC[i]) {
+        magicMatches = false;
+        break;
+      }
+    }
+    if (!magicMatches) continue;
+    if (plain[offset + MAGIC.length] !== FORMAT_VERSION) continue;
+
+    const headerMode = MODE_FROM_CODE[plain[offset + 8]];
+    if (headerMode !== mode) continue;
+
+    const headerBits = plain[offset + 9] === 1 ? 256 : 128;
+    if (headerBits !== keyBits) continue;
+
+    const width = readUint32(plain, offset + 12);
+    const height = readUint32(plain, offset + 16);
+    const rgbLength = readUint32(plain, offset + 20);
+    if (width < 1 || height < 1 || width > 20000 || height > 20000) continue;
+    if (rgbLength !== width * height * 3) continue;
+    if (offset !== rgbLength) continue;
+
+    const payloadLength = rgbLength + HEADER_SIZE;
+    let cipherLength;
+    if (mode === 'CTR') {
+      cipherLength = payloadLength;
+      if (cipherLength > plain.length) continue;
+    } else {
+      cipherLength = Math.ceil(payloadLength / AES_BLOCK_BYTES) * AES_BLOCK_BYTES;
+      if (cipherLength > plain.length) continue;
+      const remainder = payloadLength % AES_BLOCK_BYTES;
+      const padLength = remainder === 0 ? AES_BLOCK_BYTES : AES_BLOCK_BYTES - remainder;
+      let paddingValid = true;
+      for (let i = 0; i < padLength; i += 1) {
+        if (plain[offset + HEADER_SIZE + i] !== padLength) {
+          paddingValid = false;
+          break;
+        }
+      }
+      if (!paddingValid) continue;
+    }
+
+    return { width, height, rgbLength, cipherLength };
+  }
+  return null;
+}
+
+/**
+ * Decrypt ciphertext that was stored as opaque RGB pixels (encrypted PNG).
+ *
+ * Unlike decryptImage(), the header is not necessarily at the end of the
+ * buffer: the canvas may have appended zero bytes to fill its last row.
+ * The returned `cipherLength` is the exact ciphertext length, so callers
+ * can trim the pixel buffer before exporting a `.sitr` package.
+ */
+export function decryptImageFromPixels({ pixels, mode, key, iv, onProgress = () => {} }) {
+  if (!(pixels instanceof Uint8Array)) fail('INVALID_PAYLOAD');
+  validateCommon({ mode, key, iv });
+
+  const schedule = expandKey(key);
+  let input = pixels;
+
+  if (mode === 'CTR') {
+    if (pixels.length < HEADER_SIZE) fail('DATA_TRUNCATED');
+  } else {
+    const usable = pixels.length - (pixels.length % AES_BLOCK_BYTES);
+    if (usable < HEADER_SIZE + AES_BLOCK_BYTES) fail('DATA_TRUNCATED');
+    input = pixels.subarray(0, usable);
+  }
+
+  const plain = new Uint8Array(input.length);
+  if (mode === 'CTR') ctrXor(input, plain, iv, schedule, onProgress);
+  else if (mode === 'ECB') decryptEcb(input, plain, schedule, onProgress);
+  else decryptCbc(input, plain, iv, schedule, onProgress);
+
+  const meta = locateImageHeader(plain, mode, key.length * 8);
+  if (!meta) fail('AUTH_FAILED');
+
+  return {
+    rgb: plain.slice(0, meta.rgbLength),
+    width: meta.width,
+    height: meta.height,
+    mode,
+    keyBits: key.length * 8,
+    cipherLength: meta.cipherLength,
+  };
+}
+
 /** Raw CTR keystream helper (used by the verification suite). */
 export function ctrCryptBytes(input, key, iv) {
   const output = new Uint8Array(input.length);

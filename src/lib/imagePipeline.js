@@ -39,6 +39,41 @@ export function loadImageFromFile(file) {
 }
 
 /**
+ * Read a PNG at its natural size without downscaling, smoothing or white
+ * flattening. This is the lossless path used when an encrypted PNG is
+ * re-imported: every RGB byte must survive the canvas round-trip.
+ */
+export function loadImagePixelsFromFile(
+  file,
+  { maxSide = 8000, maxPixels = 36_000_000 } = {},
+) {
+  return loadImageFromFile(file).then((element) => {
+    const width = element.naturalWidth || element.width;
+    const height = element.naturalHeight || element.height;
+    if (!width || !height) throw new Error('IMAGE_DECODE_FAILED');
+    if (width > maxSide || height > maxSide || width * height > maxPixels) {
+      throw new Error('IMAGE_TOO_LARGE');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', {
+      willReadFrequently: true,
+      colorSpace: 'srgb',
+    });
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(element, 0, 0, width, height);
+
+    return {
+      imageData: ctx.getImageData(0, 0, width, height),
+      width,
+      height,
+    };
+  });
+}
+
+/**
  * Draw the source onto a white opaque canvas and downscale it to a
  * performance-safe size. Alpha is flattened so RGB is always meaningful.
  */
@@ -54,7 +89,10 @@ export function prepareImage(source) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = canvas.getContext('2d', {
+    willReadFrequently: true,
+    colorSpace: 'srgb',
+  });
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = '#ffffff';
@@ -90,6 +128,10 @@ export function imageDataToRgb(imageData) {
 /**
  * Map ciphertext bytes into the RGB channels of an opaque image, keeping
  * one byte per channel so the visual pattern (ECB) is preserved.
+ *
+ * IMPORTANT: alpha is always 255. Canvas PNG export is only byte-exact for
+ * RGB when every pixel is fully opaque; partial alpha triggers
+ * premultiplication and would corrupt ciphertext bytes.
  */
 export function bytesToImageData(bytes, width, height) {
   const pixels = width * height;
@@ -100,10 +142,6 @@ export function bytesToImageData(bytes, width, height) {
     data[i + 1] = bytes[target + 1];
     data[i + 2] = bytes[target + 2];
     data[i + 3] = 255;
-  }
-  for (let i = limit; i < pixels * 3; i += 1) {
-    const target = Math.floor(i / 3) * 4 + (i % 3);
-    data[target] = 0;
   }
   for (let i = 3; i < data.length; i += 4) {
     data[i] = 255;
@@ -131,7 +169,7 @@ export function imageDataToCanvas(imageData) {
   const canvas = document.createElement('canvas');
   canvas.width = imageData.width;
   canvas.height = imageData.height;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { colorSpace: 'srgb' });
   ctx.putImageData(imageData, 0, 0);
   return canvas;
 }

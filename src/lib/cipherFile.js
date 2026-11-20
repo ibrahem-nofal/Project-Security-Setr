@@ -1,14 +1,23 @@
 /**
- * .sitr binary container — lets learners export an encrypted image plus the
- * public metadata (mode, IV, dimensions) needed to decrypt it later.
+ * .sitr binary container — v1
+ *
+ *   [4 bytes  Magic  'SITR']
+ *   [1 byte   Version      0x01]
+ *   [1 byte   Mode         0=ECB, 1=CBC, 2=CTR]
+ *   [16 bytes IV]
+ *   [Payload ciphertext …]
+ *
+ * The payload is exactly what the AES engine produced: `RGB || 24-byte
+ * payload header` (+ PKCS#7 padding for ECB/CBC). Dimensions and key size
+ * live inside that encrypted payload, so the container never needs to trust
+ * unauthenticated metadata. The IV is public by definition.
  */
 import { AES_BLOCK_BYTES, MODE_CODES, MODE_FROM_CODE, PAYLOAD_HEADER_SIZE } from './constants.js';
 import { bytesToHex } from './encoding.js';
 
 const MAGIC = [0x53, 0x49, 0x54, 0x52]; // "SITR"
 const VERSION = 1;
-const HEADER_SIZE = 38;
-const MAX_NAME_BYTES = 240;
+export const CIPHER_FILE_HEADER_SIZE = 22;
 export const CIPHER_FILE_EXTENSION = 'sitr';
 export const MAX_CIPHER_FILE_BYTES = 80 * 1024 * 1024;
 
@@ -19,88 +28,58 @@ function modeCode(mode) {
   return MODE_CODES[mode];
 }
 
-function writeUint32(view, offset, value) {
-  view[offset] = (value >>> 24) & 0xff;
-  view[offset + 1] = (value >>> 16) & 0xff;
-  view[offset + 2] = (value >>> 8) & 0xff;
-  view[offset + 3] = value & 0xff;
-}
+export function createCipherFile({ cipher, mode, iv }) {
+  if (!(cipher instanceof Uint8Array) || cipher.length === 0) {
+    throw new Error('INVALID_PAYLOAD');
+  }
+  if (!(iv instanceof Uint8Array) || iv.length !== AES_BLOCK_BYTES) {
+    throw new Error('INVALID_IV');
+  }
 
-function readUint32(view, offset) {
-  return (
-    ((view[offset] << 24) | (view[offset + 1] << 16) | (view[offset + 2] << 8) | view[offset + 3]) >>>
-    0
-  );
-}
-
-export function createCipherFile({ cipher, width, height, mode, keyBits, iv, sourceName }) {
-  if (!(cipher instanceof Uint8Array) || cipher.length === 0) throw new Error('INVALID_PAYLOAD');
-  const encoder = new TextEncoder();
-  let nameBytes = encoder.encode(String(sourceName || 'image').slice(0, 80));
-  if (nameBytes.length > MAX_NAME_BYTES) nameBytes = nameBytes.subarray(0, MAX_NAME_BYTES);
-
-  const bytes = new Uint8Array(HEADER_SIZE + nameBytes.length + cipher.length);
+  const bytes = new Uint8Array(CIPHER_FILE_HEADER_SIZE + cipher.length);
   bytes.set(MAGIC, 0);
   bytes[4] = VERSION;
   bytes[5] = modeCode(mode);
-  bytes[6] = keyBits === 256 ? 1 : 0;
-  bytes[7] = 0;
-  writeUint32(bytes, 8, width);
-  writeUint32(bytes, 12, height);
-  bytes.set(iv, 16);
-  bytes[32] = (nameBytes.length >>> 8) & 0xff;
-  bytes[33] = nameBytes.length & 0xff;
-  writeUint32(bytes, 34, cipher.length);
-  bytes.set(nameBytes, HEADER_SIZE);
-  bytes.set(cipher, HEADER_SIZE + nameBytes.length);
+  bytes.set(iv, 6);
+  bytes.set(cipher, CIPHER_FILE_HEADER_SIZE);
 
   return {
     bytes,
     blob: new Blob([bytes], { type: 'application/octet-stream' }),
     ivHex: bytesToHex(iv),
-    sourceName,
   };
 }
 
 export function parseCipherFile(buffer) {
   const bytes = new Uint8Array(buffer);
-  if (bytes.length < HEADER_SIZE) throw new Error('FILE_TRUNCATED');
+  if (bytes.length <= CIPHER_FILE_HEADER_SIZE) throw new Error('FILE_TRUNCATED');
+
   for (let i = 0; i < MAGIC.length; i += 1) {
     if (bytes[i] !== MAGIC[i]) throw new Error('FILE_INVALID');
   }
   if (bytes[4] !== VERSION) throw new Error('FILE_VERSION');
+
   const mode = MODE_FROM_CODE[bytes[5]];
   if (!mode) throw new Error('FILE_INVALID');
-  const keyBits = bytes[6] === 1 ? 256 : 128;
-  const width = readUint32(bytes, 8);
-  const height = readUint32(bytes, 12);
-  if (!width || !height || width > 20000 || height > 20000) throw new Error('FILE_INVALID');
 
-  const iv = bytes.slice(16, 32);
-  const nameLength = (bytes[32] << 8) | bytes[33];
-  const dataLength = readUint32(bytes, 34);
-  if (nameLength > MAX_NAME_BYTES) throw new Error('FILE_INVALID');
-  if (dataLength === 0 || HEADER_SIZE + nameLength + dataLength !== bytes.length) {
-    throw new Error('FILE_TRUNCATED');
-  }
+  const iv = bytes.slice(6, 22);
+  const cipher = bytes.slice(CIPHER_FILE_HEADER_SIZE);
+  const minimumCipherLength = Math.ceil((PAYLOAD_HEADER_SIZE + 1) / AES_BLOCK_BYTES) * AES_BLOCK_BYTES;
 
-  // Keep declared dimensions honest so a corrupted package cannot trigger a
-  // huge canvas allocation before authentication is attempted.
-  const rgbLength = width * height * 3;
   if (mode === 'CTR') {
-    if (dataLength !== PAYLOAD_HEADER_SIZE + rgbLength) throw new Error('FILE_INVALID');
-  } else {
-    const paddingOverhead = dataLength - rgbLength;
-    if (
-      dataLength % AES_BLOCK_BYTES !== 0 ||
-      paddingOverhead < PAYLOAD_HEADER_SIZE + 1 ||
-      paddingOverhead > PAYLOAD_HEADER_SIZE + AES_BLOCK_BYTES
-    ) {
-      throw new Error('FILE_INVALID');
-    }
+    if (cipher.length < PAYLOAD_HEADER_SIZE + 1) throw new Error('FILE_TRUNCATED');
+  } else if (cipher.length % AES_BLOCK_BYTES !== 0 || cipher.length < minimumCipherLength) {
+    throw new Error('FILE_INVALID');
   }
 
-  const name = new TextDecoder().decode(bytes.subarray(HEADER_SIZE, HEADER_SIZE + nameLength));
-  const cipher = bytes.slice(HEADER_SIZE + nameLength);
-  return { cipher, width, height, mode, keyBits, iv, ivHex: bytesToHex(iv), sourceName: name || 'image' };
+  return {
+    cipher,
+    mode,
+    iv,
+    ivHex: bytesToHex(iv),
+    // Key size is authenticated inside the encrypted payload header; it is
+    // resolved after the user supplies a key.
+    keyBits: null,
+    sourceName: '',
+  };
 }

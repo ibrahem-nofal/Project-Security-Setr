@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   decryptBlockBytes,
   decryptImage,
+  decryptImageFromPixels,
   encryptBlockBytes,
   encryptImage,
   ctrCryptBytes,
@@ -72,6 +73,39 @@ for (const keyBits of [128, 256]) {
       `${mode}-${keyBits} must reject a wrong key`,
     );
   }
+}
+
+// Encrypted-PNG pixel path: ciphertext + zero-filled canvas tail must
+// decrypt without knowing the exact ciphertext length in advance.
+for (const mode of ['ECB', 'CBC', 'CTR']) {
+  const keyBytes = new Uint8Array(32).fill(9);
+  const ivBytes = new Uint8Array(16).fill(4);
+  const width = 31;
+  const height = 19;
+  const pixels = new Uint8Array(width * height * 3);
+  for (let i = 0; i < pixels.length; i += 1) pixels[i] = (i * 29 + 3) & 0xff;
+
+  const encrypted = encryptImage({
+    rgb: pixels,
+    width,
+    height,
+    mode,
+    key: keyBytes,
+    iv: ivBytes,
+  });
+  const canvasBytes = new Uint8Array(encrypted.length + 13);
+  canvasBytes.set(encrypted);
+
+  const restored = decryptImageFromPixels({
+    pixels: canvasBytes,
+    mode,
+    key: keyBytes,
+    iv: ivBytes,
+  });
+  assert.equal(restored.width, width, `${mode} pixel width`);
+  assert.equal(restored.height, height, `${mode} pixel height`);
+  assert.equal(restored.cipherLength, encrypted.length, `${mode} exact cipher length`);
+  assert.deepEqual(Buffer.from(restored.rgb), Buffer.from(pixels), `${mode} pixel round-trip`);
 }
 
 // Tamper detection ---------------------------------------------------------

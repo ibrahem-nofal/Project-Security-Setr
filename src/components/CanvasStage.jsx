@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeftRight,
+  Columns2,
   Download,
   FileKey,
   Image as ImageIcon,
@@ -8,11 +10,15 @@ import {
   Lock,
   RotateCcw,
   ShieldCheck,
+  SlidersHorizontal,
+  Square,
   Unlock,
+  Upload,
 } from 'lucide-react';
 import { MODE_INSIGHTS } from '../lib/constants.js';
 import { PRESETS } from '../lib/presets.js';
 import { cn, formatDuration, formatNumber } from '../lib/encoding.js';
+import ImageComparison from './ImageComparison.jsx';
 
 function StatCell({ label, value, unit }) {
   return (
@@ -64,8 +70,15 @@ function EntropyBar({ label, value, accent }) {
   );
 }
 
+const COMPARISON_MODES = [
+  { id: 'single', label: 'معاينة', icon: Square },
+  { id: 'side', label: 'جنباً إلى جنب', icon: Columns2 },
+  { id: 'split', label: 'منزلق', icon: SlidersHorizontal },
+];
+
 export default function CanvasStage({
   view,
+  reference,
   cipher,
   stats,
   busy,
@@ -73,28 +86,77 @@ export default function CanvasStage({
   operation,
   mode,
   keyBits,
+  comparisonMode = 'single',
+  onComparisonModeChange,
+  compareOriginal = false,
+  onCompareOriginalChange,
+  splitPosition = 50,
+  onSplitPositionChange,
   onDownloadPng,
   onDownloadPackage,
   onReset,
   canReset,
+  canCompare = false,
   onPreset,
+  onFile,
+  loadingImage = false,
 }) {
-  const canvasRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+
+  const dropDisabled = busy || loadingImage || typeof onFile !== 'function';
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !view) return;
-    canvas.width = view.width;
-    canvas.height = view.height;
-    const ctx = canvas.getContext('2d');
-    ctx.putImageData(view.imageData, 0, 0);
-  }, [view]);
+    function clearDrag() {
+      dragDepth.current = 0;
+      setDragging(false);
+    }
+    window.addEventListener('dragend', clearDrag);
+    window.addEventListener('drop', clearDrag);
+    return () => {
+      window.removeEventListener('dragend', clearDrag);
+      window.removeEventListener('drop', clearDrag);
+    };
+  }, []);
+
+  function handleDragEnter(event) {
+    if (dropDisabled) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+
+  function handleDragOver(event) {
+    if (dropDisabled) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    if (!dragging) setDragging(true);
+  }
+
+  function handleDragLeave(event) {
+    if (dropDisabled) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    if (dropDisabled) return;
+    const file = event.dataTransfer?.files?.[0];
+    if (file) onFile(file);
+  }
 
   const stageMode = view && view.kind !== 'original' && cipher ? cipher.mode : mode;
   const stageBits = view && view.kind !== 'original' && cipher ? cipher.keyBits : keyBits;
   const insight = MODE_INSIGHTS[stageMode];
   const viewLabel =
     view?.kind === 'encrypted' ? 'مشفّرة' : view?.kind === 'decrypted' ? 'مستعادة' : 'أصلية';
+  const showingBefore = Boolean(compareOriginal && canCompare);
+  const statWidth = view?.sourceWidth ?? view?.width;
+  const statHeight = view?.sourceHeight ?? view?.height;
 
   return (
     <section className="order-1 w-full lg:order-2">
@@ -110,19 +172,23 @@ export default function CanvasStage({
           <span
             className={cn(
               'inline-flex h-[32px] items-center gap-1.5 rounded-pill border px-2.5 text-[9.5px] font-medium',
-              view?.kind === 'encrypted'
-                ? 'border-signal-line bg-signal-soft text-signal'
-                : 'border-hairline bg-white text-graphite',
+              showingBefore
+                ? 'border-hairline bg-white text-graphite'
+                : view?.kind === 'encrypted'
+                  ? 'border-signal-line bg-signal-soft text-signal'
+                  : 'border-hairline bg-white text-graphite',
             )}
           >
-            {view?.kind === 'encrypted' ? (
+            {showingBefore ? (
+              <ImageIcon size={10} aria-hidden="true" />
+            ) : view?.kind === 'encrypted' ? (
               <Lock size={10} aria-hidden="true" />
             ) : view?.kind === 'decrypted' ? (
               <Unlock size={10} aria-hidden="true" />
             ) : (
               <ImageIcon size={10} aria-hidden="true" />
             )}
-            {view ? viewLabel : 'فارغة'}
+            {showingBefore ? 'قبل التشفير' : view ? viewLabel : 'فارغة'}
           </span>
 
           <ToolButton
@@ -149,16 +215,85 @@ export default function CanvasStage({
         </div>
       </div>
 
-      <div className="relative mt-3.5 overflow-hidden rounded-shell bg-cloud p-2.5 sm:p-4">
-        <div className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[26px] border border-hairline bg-white sm:min-h-[480px]">
+      {canCompare && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5" data-testid="comparison-controls">
+          <div
+            className="flex rounded-pill border border-hairline bg-white p-0.5"
+            role="group"
+            aria-label="طريقة مقارنة الصورة الأصلية والمشفّرة"
+          >
+            {COMPARISON_MODES.map((item) => {
+              const Icon = item.icon;
+              const active = comparisonMode === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onComparisonModeChange?.(item.id)}
+                  disabled={busy}
+                  className={cn(
+                    'inline-flex h-[27px] items-center gap-1 rounded-pill px-2.5 text-[9px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    active
+                      ? 'bg-signal text-white'
+                      : 'text-muted hover:text-inkstone',
+                  )}
+                >
+                  <Icon size={10} aria-hidden="true" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            aria-pressed={showingBefore}
+            onClick={onCompareOriginalChange}
+            disabled={busy}
+            title="مقارنة سريعة بين قبل وبعد التشفير"
+            className={cn(
+              'inline-flex h-[32px] items-center gap-1.5 rounded-pill border px-2.5 text-[9px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+              showingBefore
+                ? 'border-signal-line bg-signal-soft text-signal'
+                : 'border-hairline bg-white text-graphite hover:border-signal/40 hover:text-signal',
+            )}
+          >
+            <ArrowLeftRight size={10} aria-hidden="true" />
+            {showingBefore ? 'عرض بعد التشفير' : 'قبل / بعد'}
+          </button>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          'relative mt-3.5 overflow-hidden rounded-shell bg-cloud p-2.5 transition-shadow sm:p-4',
+          dragging && 'ring-2 ring-signal ring-offset-2 ring-offset-porcelain',
+        )}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        data-testid="workspace-dropzone"
+      >
+        <div
+          className={cn(
+            'relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[26px] bg-white transition-colors sm:min-h-[480px]',
+            dragging
+              ? 'border-2 border-dashed border-signal bg-signal-soft/35'
+              : 'border border-hairline',
+          )}
+        >
           {view ? (
-            <div className="checker flex h-full w-full items-center justify-center p-4 sm:p-7">
-              <canvas
-                ref={canvasRef}
-                className="block h-auto max-h-[56vh] w-auto max-w-full rounded-[3px] outline outline-1 outline-black/5"
-                aria-label="معاينة الصورة داخل مساحة العمل"
-              />
-            </div>
+            <ImageComparison
+              reference={reference}
+              view={view}
+              mode={comparisonMode}
+              split={splitPosition}
+              onSplitChange={onSplitPositionChange}
+              flip={compareOriginal}
+              canCompare={canCompare}
+            />
           ) : (
             <div className="flex flex-col items-center px-6 py-14 text-center">
               <div className="relative mb-5">
@@ -172,9 +307,9 @@ export default function CanvasStage({
               </div>
 
               <h3 className="text-[15px] font-semibold">لا توجد صورة في مساحة العمل</h3>
-              <p className="mt-1.5 max-w-[340px] text-[11px] leading-5 text-muted">
-                ارفع صورة من لوحة التحكم، أو ابدأ بنموذج جاهز لاختبار الفروق بين أنماط
-                التشفير الثلاثة.
+              <p className="mt-1.5 max-w-[360px] text-[11px] leading-5 text-muted">
+                اسحب صورة وأفلتها في أي مكان داخل هذه المساحة، أو ارفعها من لوحة التحكم،
+                أو ابدأ بنموذج جاهز لاختبار أنماط التشفير الثلاثة.
               </p>
 
               <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
@@ -205,17 +340,40 @@ export default function CanvasStage({
 
           {view && (
             <>
-              <span className="pointer-events-none absolute start-3 top-3 rounded-pill border border-hairline bg-white/90 px-2.5 py-1 font-mono text-[8.5px] text-muted backdrop-blur-sm">
-                AES · {stageMode} · {stageBits}
+              <span className="pointer-events-none absolute start-3 top-3 z-10 rounded-pill border border-hairline bg-white/90 px-2.5 py-1 font-mono text-[8.5px] text-muted backdrop-blur-sm">
+                AES · {stageMode} · {stageBits ?? '—'}
               </span>
-              <span className="ltr pointer-events-none absolute end-3 top-3 rounded-pill border border-hairline bg-white/90 px-2.5 py-1 font-mono text-[8.5px] text-muted backdrop-blur-sm tnum">
+              <span className="ltr pointer-events-none absolute end-3 top-3 z-10 rounded-pill border border-hairline bg-white/90 px-2.5 py-1 font-mono text-[8.5px] text-muted backdrop-blur-sm tnum">
                 {view.width} × {view.height}
               </span>
             </>
           )}
 
+          {loadingImage && !busy && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[2px]">
+              <span className="inline-flex items-center gap-2 rounded-pill border border-hairline bg-white px-3.5 py-2 text-[10px] font-medium text-graphite shadow-sm">
+                <LoaderCircle size={13} className="animate-spin text-signal" aria-hidden="true" />
+                جارٍ قراءة الملف…
+              </span>
+            </div>
+          )}
+
+          {dragging && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-signal-soft/65 backdrop-blur-[2px]">
+              <div className="flex flex-col items-center gap-2 rounded-[20px] border-2 border-dashed border-signal bg-white/95 px-7 py-5 text-center shadow-sm">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-signal text-white">
+                  <Upload size={20} aria-hidden="true" />
+                </span>
+                <p className="text-[13px] font-semibold text-inkstone">أفلت الصورة هنا</p>
+                <p className="font-mono text-[8.5px] tracking-[0.06em] text-muted">
+                  PNG · JPG · WebP · .SITR
+                </p>
+              </div>
+            </div>
+          )}
+
           {busy && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 p-6 backdrop-blur-[3px]">
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/70 p-6 backdrop-blur-[3px]">
               <div className="w-[min(320px,86%)] rounded-[18px] border border-hairline bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="flex items-center gap-1.5 text-[11px] font-medium">
@@ -234,7 +392,7 @@ export default function CanvasStage({
                 </div>
                 <p className="mt-2 font-mono text-[8.5px] tracking-[0.05em] text-muted">
                   AES-WORKER · {operation === 'encrypt' ? stageMode : cipher?.mode} ·{' '}
-                  {operation === 'encrypt' ? keyBits : cipher?.keyBits}
+                  {operation === 'encrypt' ? keyBits : cipher?.keyBits ?? '—'}
                 </p>
               </div>
             </div>
@@ -243,7 +401,7 @@ export default function CanvasStage({
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1.5">
           <p className="text-[8.5px] leading-4 text-muted">
-            تُشفَّر قنوات RGB فقط للحفاظ على العتامة البصرية للمعاينة.
+            اسحب أي صورة إلى المساحة · تُشفَّر قنوات RGB فقط مع تثبيت قناة alpha على 255.
           </p>
           <p className="font-mono text-[8.5px] tracking-[0.04em] text-muted">
             RGBA → RGB → AES
@@ -255,7 +413,7 @@ export default function CanvasStage({
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <StatCell
             label="الأبعاد"
-            value={`${view.width}×${view.height}`}
+            value={statWidth == null ? '—' : `${statWidth}×${statHeight}`}
             unit="px"
           />
           <StatCell
@@ -336,7 +494,7 @@ export default function CanvasStage({
             <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-hairline pt-2.5 text-[8.5px] text-muted">
               <Info size={10} aria-hidden="true" />
               <span className="font-mono">
-                {cipher.mode} · {cipher.keyBits}
+                {cipher.mode} · {cipher.keyBits ?? '—'}
               </span>
               <span>· IV {cipher.ivHex ? 'محفوظ' : '—'}</span>
             </div>

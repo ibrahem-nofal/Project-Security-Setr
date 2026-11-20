@@ -34,6 +34,7 @@ export default function Sidebar({
   onKeyBitsChange,
   keyHex,
   onKeyChange,
+  onKeyPaste,
   keyValid,
   onGenerateKey,
   onDeriveKey,
@@ -99,7 +100,7 @@ export default function Sidebar({
             {cipher.sourceName}
           </span>
           <span className="ms-auto shrink-0 font-mono text-[8.5px] text-muted">
-            {cipher.mode} · {cipher.keyBits}
+            {cipher.mode} · {cipher.keyBits ?? '—'}
           </span>
         </div>
       )}
@@ -137,6 +138,7 @@ export default function Sidebar({
             onKeyBitsChange={onKeyBitsChange}
             keyHex={keyHex}
             onKeyChange={onKeyChange}
+            onKeyPaste={onKeyPaste}
             keyValid={keyValid}
             onGenerate={onGenerateKey}
             onDerive={onDeriveKey}

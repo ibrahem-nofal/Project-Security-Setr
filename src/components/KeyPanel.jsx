@@ -17,6 +17,7 @@ export default function KeyPanel({
   onKeyBitsChange,
   keyHex,
   onKeyChange,
+  onKeyPaste,
   keyValid,
   onGenerate,
   onDerive,
@@ -105,37 +106,48 @@ export default function KeyPanel({
           </span>
         </div>
 
-        <div className="relative mt-1">
+        <div className="relative mt-1" dir="ltr">
           <input
             id="key-hex"
             dir="ltr"
             value={keyHex}
             onChange={(event) => onKeyChange(event.target.value)}
+            onPaste={(event) => {
+              if (!onKeyPaste) return;
+              const text = event.clipboardData?.getData('text');
+              if (!text) return;
+              event.preventDefault();
+              onKeyPaste(text);
+            }}
             disabled={disabled}
             maxLength={charLength}
             spellCheck={false}
             autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
             placeholder={keyBits === 256 ? '64 hex · 256-bit key' : '32 hex · 128-bit key'}
             aria-invalid={!keyValid}
             className={cn(
-              'ltr h-10 w-full rounded-[9px] border bg-white px-2.5 pe-9 font-mono text-[10px] tracking-[0.01em] outline-none transition-colors focus:border-signal',
+              'ltr block h-10 w-full rounded-[9px] border bg-white pl-3 pr-12 font-mono text-[10px] tracking-[0.01em] outline-none transition-colors focus:border-signal',
               keyValid ? 'border-hairline' : 'border-danger/40',
             )}
           />
-          <button
-            type="button"
-            onClick={handleCopy}
-            disabled={!keyValid || disabled}
-            title="نسخ المفتاح"
-            aria-label="نسخ المفتاح"
-            className="absolute end-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-[7px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
-          >
-            {copied ? (
-              <Check size={12} className="text-signal" aria-hidden="true" />
-            ) : (
-              <Copy size={12} aria-hidden="true" />
-            )}
-          </button>
+          <span className="pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-[7px] bg-white">
+            <button
+              type="button"
+              onClick={handleCopy}
+              disabled={!keyValid || disabled}
+              title="نسخ المفتاح"
+              aria-label="نسخ المفتاح"
+              className="pointer-events-auto grid h-7 w-7 place-items-center rounded-[7px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
+            >
+              {copied ? (
+                <Check size={12} className="text-signal" aria-hidden="true" />
+              ) : (
+                <Copy size={12} aria-hidden="true" />
+              )}
+            </button>
+          </span>
         </div>
 
         <p

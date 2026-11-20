@@ -14,6 +14,9 @@
 - [x] Phase 4: Image Canvas & Raw Pixel Processing Pipeline
 - [x] Phase 5: Client-side AES Engine Implementation (ECB, CBC, CTR Modes)
 - [x] Phase 6: Edge-case Handling, UI Polish & RTL Alignment Verification
+- [x] Phase 7: Workspace Dropzone, Collapsible Presets, Key Field Alignment
+- [x] Phase 8: Image Comparison View (Side-by-Side + Split Slider + Quick Toggle)
+- [x] Phase 9: Unified `.sitr` v1 Header + Lossless PNG Cipher Round-Trip
 
 ---
 
@@ -27,6 +30,26 @@
 | 4 | Complete | Canvas stage, drag/drop + presets (Tux, Alice, pattern), 1200px safe rasterization on white, RGB extraction, ciphertext preview, entropy metrics, live insight card |
 | 5 | Complete | Pure FIPS-197 AES-128/256 engine (ECB/CBC/CTR), PKCS#7, metadata header auth, Web Worker + progress, FIPS/NIST tests pass |
 | 6 | Complete | Self-hosted IBM Plex fonts (zero external requests), locked controls during worker jobs, `.sitr` dimension/payload consistency checks, worker error recovery, larger readable type, verified at 320/390/900/1440px with full E2E + edge suites and production preview |
+| 7 | Complete | Whole workspace is a dropzone with Signal Violet dashed highlight; presets card collapses; hex key field uses physical `pr-12` padding so the copy icon never covers the first characters |
+| 8 | Complete | Workspace header comparison control: single / side-by-side / split slider + press-to-compare quick toggle, all fed by the retained original ImageData |
+| 9 | Complete | `.sitr` v1 = `SITR` + version + mode + 16-byte IV + ciphertext; ciphertext (including payload header) is mapped to fully opaque RGB pixels so encrypted PNG files re-import and decrypt losslessly; PNG import probes current mode/key/IV and falls back to normal source loading |
+
+---
+
+## Phase 7–9 — Feedback Fixes
+
+| # | Requirement | Status | Implementation |
+| - | ----------- | ------ | -------------- |
+| 1 | Full workspace drag & drop | Complete | `CanvasStage` owns `dragenter/dragover/dragleave/drop` on the whole preview shell; highlight = `#594ff4` dashed border + `signal-soft` tint + drop overlay; dropped files go straight to `App.handleFile` |
+| 2 | Collapsible presets | Complete | `ImagePanel` adds an accessible collapse toggle (`aria-expanded`) with `ChevronUp/Down`; collapsed state hides the Tux/Alice/Pattern grid |
+| 3 | Key copy icon overlap | Complete | `KeyPanel` hex input is forced LTR + `font-mono`, uses physical `pl-3 pr-12`, copy action is `absolute right-1.5 z-10` so it sits outside the 64-char text boundary |
+| 4 | Original vs encrypted comparison | Complete | New `ImageComparison.jsx` + header segmented control: `معاينة` / `جنباً إلى جنب` / `منزلق` and a quick `قبل / بعد` toggle; original ImageData is retained in `reference` state |
+| 5 | `.png` / `.sitr` decryption pipeline | Complete | New `cryptoPipeline.js`; `.sitr` header exactly `SITR`+`0x01`+mode+16-byte IV+payload; ciphertext rendered into opaque RGB; `decryptImageFromPixels()` scans the decrypted stream for the authenticated payload header; PNG import auto-detects and decrypts |
+
+**Round-trip verification (Phase 9)**
+- Encrypt → `.sitr` export → reload → import → mode/IV auto-filled → paste key → decrypt: passes.
+- Encrypt → encrypted `.png` export → reload → import → current mode/key/IV → auto-decrypt: passes.
+- Alpha is forced to `255` in `bytesToImageData()` and canvas contexts use `colorSpace: 'srgb'`, preventing premultiplication from altering ciphertext bytes.
 
 ---
 

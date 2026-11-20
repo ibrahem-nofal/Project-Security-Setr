@@ -26,35 +26,36 @@ page.on('request', (request) => {
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') external.push(url);
 });
 
-function u32(value) {
-  return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
-}
-
-function sitrBuffer({ magic = [...Buffer.from('SITR')], width, height, cipher, nameLength = 0 }) {
-  const header = Buffer.from([
-    ...magic,
-    1, // version
-    0, // ECB
-    1, // 256-bit
-    0,
-    ...u32(width),
-    ...u32(height),
-    ...new Array(16).fill(0x2a),
-    (nameLength >>> 8) & 0xff,
-    nameLength & 0xff,
-    ...u32(cipher.length),
+function sitrBuffer({
+  magic = [...Buffer.from('SITR')],
+  version = 1,
+  mode = 0,
+  iv = new Array(16).fill(0x2a),
+  payload = Buffer.alloc(32),
+}) {
+  return Buffer.concat([
+    Buffer.from([...magic, version, mode, ...iv]),
+    Buffer.from(payload),
   ]);
-  return Buffer.concat([header, cipher, Buffer.alloc(nameLength)]);
 }
 
 const badMagic = path.join(SHOTS, 'edge-bad-magic.sitr');
-await fs.writeFile(badMagic, sitrBuffer({ magic: [...Buffer.from('NOPE')], width: 2, height: 2, cipher: Buffer.alloc(48) }));
+await fs.writeFile(badMagic, sitrBuffer({ magic: [...Buffer.from('NOPE')] }));
 
-const absurdDims = path.join(SHOTS, 'edge-absurd-dims.sitr');
-await fs.writeFile(absurdDims, sitrBuffer({ width: 20000, height: 20000, cipher: Buffer.alloc(32) }));
+const badVersion = path.join(SHOTS, 'edge-bad-version.sitr');
+await fs.writeFile(badVersion, sitrBuffer({ version: 2 }));
+
+const badMode = path.join(SHOTS, 'edge-bad-mode.sitr');
+await fs.writeFile(badMode, sitrBuffer({ mode: 9 }));
+
+const badPayload = path.join(SHOTS, 'edge-bad-payload.sitr');
+await fs.writeFile(badPayload, sitrBuffer({ payload: Buffer.alloc(30) }));
 
 const truncated = path.join(SHOTS, 'edge-truncated.sitr');
-await fs.writeFile(truncated, sitrBuffer({ width: 2, height: 2, cipher: Buffer.alloc(48) }).subarray(0, 50));
+await fs.writeFile(truncated, sitrBuffer({}).subarray(0, 10));
+
+const randomPayload = path.join(SHOTS, 'edge-random-payload.sitr');
+await fs.writeFile(randomPayload, sitrBuffer({ payload: Buffer.alloc(48, 0x5a) }));
 
 const tinyPng = path.join(SHOTS, 'edge-1x1.png');
 await fs.writeFile(
@@ -117,11 +118,24 @@ await fileInput.setInputFiles(badMagic);
 console.log('bad magic ->', await waitForAlert('غير صالح'));
 await page.screenshot({ path: path.join(SHOTS, '30-edge-bad-magic.png'), fullPage: true });
 
-await fileInput.setInputFiles(absurdDims);
-console.log('absurd dims ->', await waitForAlert('غير صالح'));
+await fileInput.setInputFiles(badVersion);
+console.log('bad version ->', await waitForAlert('غير صالح'));
+
+await fileInput.setInputFiles(badMode);
+console.log('bad mode ->', await waitForAlert('غير صالح'));
+
+await fileInput.setInputFiles(badPayload);
+console.log('bad payload ->', await waitForAlert('غير صالح'));
 
 await fileInput.setInputFiles(truncated);
 console.log('truncated ->', await waitForAlert('غير مكتملة'));
+
+// A structurally valid container with random ciphertext must import, then
+// fail authentication on decryption instead of throwing a format error.
+await fileInput.setInputFiles(randomPayload);
+await waitForBadge('مشفّرة');
+await page.getByRole('button', { name: 'فك تشفير الصورة', exact: true }).click();
+console.log('random payload auth ->', await waitForAlert('تعذّر فك التشفير'));
 
 // Recover with a real 1×1 image and complete a full cycle.
 await fileInput.setInputFiles(tinyPng);

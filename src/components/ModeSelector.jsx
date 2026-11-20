@@ -113,7 +113,10 @@ export default function ModeSelector({
       {operation === 'decrypt' && hasCipher && (
         <p className="mt-2.5 flex items-start gap-1.5 rounded-[9px] bg-white/60 px-2 py-1.5 text-[9px] leading-4 text-muted">
           <Info size={11} className="mt-[1px] shrink-0" aria-hidden="true" />
-          <span>فك التشفير يستخدم نمط الحزمة و IV المحفوظين، وليس القيم المعروضة أعلاه.</span>
+          <span>
+            فك تشفير <span className="font-mono">.sitr</span> يستخدم النمط و IV المحفوظين داخل
+            الحزمة. أما صور PNG المشفّرة فتستخدم النمط و IV المعروضين أعلاه.
+          </span>
         </p>
       )}
     </div>

@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react';
-import { Check, FileImage, LoaderCircle, Upload } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  FileImage,
+  LoaderCircle,
+  Upload,
+} from 'lucide-react';
 import { PRESETS } from '../lib/presets.js';
 import { cn } from '../lib/encoding.js';
 
@@ -14,6 +21,7 @@ export default function ImagePanel({
 }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(true);
 
   const loadedName = image?.fileName || cipher?.sourceName || null;
   const dimensions = view ? `${view.width} × ${view.height}` : null;
@@ -99,61 +107,82 @@ export default function ImagePanel({
         </div>
       )}
 
-      <div className="mt-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[9.5px] font-medium text-muted">نماذج جاهزة</p>
-          <p className="text-[8.5px] text-muted">للاختبار السريع</p>
+      <div className="mt-3 rounded-[12px] border border-hairline bg-white/55">
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <p className="text-[9.5px] font-medium text-graphite">نماذج جاهزة</p>
+            <p className="truncate text-[8.5px] text-muted">
+              {presetsOpen ? 'للاختبار السريع' : 'Tux · Alice · نقش'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPresetsOpen((value) => !value)}
+            aria-expanded={presetsOpen}
+            aria-controls="preset-grid"
+            title={presetsOpen ? 'إخفاء النماذج' : 'إظهار النماذج'}
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-pill border border-hairline bg-white px-2 text-[8.5px] font-medium text-muted transition-colors hover:border-signal/40 hover:text-signal"
+          >
+            {presetsOpen ? (
+              <ChevronUp size={10} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={10} aria-hidden="true" />
+            )}
+            {presetsOpen ? 'إخفاء' : 'إظهار'}
+          </button>
         </div>
 
-        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-          {PRESETS.map((preset) => {
-            const active = activePreset === preset.id;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => onPreset(preset)}
-                disabled={loading}
-                title={preset.note}
-                aria-pressed={active}
-                className={cn(
-                  'group overflow-hidden rounded-[10px] border bg-white p-1 text-start transition-colors disabled:opacity-60',
-                  active
-                    ? 'border-signal'
-                    : 'border-hairline hover:border-hairline-strong',
-                )}
-              >
-                <span className="relative block h-[58px] overflow-hidden rounded-[6px] bg-cloud-deep">
-                  <img
-                    src={preset.src}
-                    alt=""
-                    className={cn(
-                      'h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]',
-                      preset.id === 'tux' ? 'object-[50%_30%]' : 'object-center',
-                    )}
-                    loading="lazy"
-                  />
-                  {active && (
-                    <>
-                      <span className="absolute inset-0 bg-signal/10" />
-                      <span className="absolute end-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-signal text-white">
-                        <Check size={9} aria-hidden="true" />
-                      </span>
-                    </>
+        {presetsOpen && (
+          <div id="preset-grid" className="animate-fade grid grid-cols-3 gap-1.5 px-2 pb-2">
+            {PRESETS.map((preset) => {
+              const active = activePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => onPreset(preset)}
+                  disabled={loading}
+                  title={preset.note}
+                  aria-pressed={active}
+                  className={cn(
+                    'group overflow-hidden rounded-[10px] border bg-white p-1 text-start transition-colors disabled:opacity-60',
+                    active
+                      ? 'border-signal'
+                      : 'border-hairline hover:border-hairline-strong',
                   )}
-                </span>
-                <span className="block px-0.5 pt-1">
-                  <span className="block text-[9.5px] font-medium leading-3 text-inkstone">
-                    {preset.name}
+                >
+                  <span className="relative block h-[58px] overflow-hidden rounded-[6px] bg-cloud-deep">
+                    <img
+                      src={preset.src}
+                      alt=""
+                      className={cn(
+                        'h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]',
+                        preset.id === 'tux' ? 'object-[50%_30%]' : 'object-center',
+                      )}
+                      loading="lazy"
+                    />
+                    {active && (
+                      <>
+                        <span className="absolute inset-0 bg-signal/10" />
+                        <span className="absolute end-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-signal text-white">
+                          <Check size={9} aria-hidden="true" />
+                        </span>
+                      </>
+                    )}
                   </span>
-                  <span className="mt-0.5 block text-[8px] leading-3 text-muted">
-                    {preset.meta}
+                  <span className="block px-0.5 pt-1">
+                    <span className="block text-[9.5px] font-medium leading-3 text-inkstone">
+                      {preset.name}
+                    </span>
+                    <span className="mt-0.5 block text-[8px] leading-3 text-muted">
+                      {preset.meta}
+                    </span>
                   </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
  * AES worker — keeps the main thread responsive while processing millions
  * of pixel bytes. Receives typed arrays, returns transferred typed arrays.
  */
-import { decryptImage, encryptImage } from '../lib/aesEngine.js';
+import { decryptImage, decryptImageFromPixels, encryptImage } from '../lib/aesEngine.js';
 
 self.onmessage = (event) => {
   const { id, action, payload } = event.data || {};
@@ -30,14 +30,23 @@ self.onmessage = (event) => {
       return;
     }
 
-    if (action === 'decrypt') {
-      const result = decryptImage({
-        cipher: payload.cipher,
-        mode: payload.mode,
-        key: payload.key,
-        iv: payload.iv,
-        onProgress,
-      });
+    if (action === 'decrypt' || action === 'decrypt-pixels') {
+      const result =
+        action === 'decrypt-pixels'
+          ? decryptImageFromPixels({
+              pixels: payload.cipher,
+              mode: payload.mode,
+              key: payload.key,
+              iv: payload.iv,
+              onProgress,
+            })
+          : decryptImage({
+              cipher: payload.cipher,
+              mode: payload.mode,
+              key: payload.key,
+              iv: payload.iv,
+              onProgress,
+            });
       self.postMessage(
         {
           id,
@@ -48,6 +57,7 @@ self.onmessage = (event) => {
             height: result.height,
             mode: result.mode,
             keyBits: result.keyBits,
+            cipherLength: result.cipherLength,
           },
         },
         [result.rgb.buffer],
