@@ -85,6 +85,11 @@ const tablet = await browser.newPage({ viewport: { width: 900, height: 1100 } })
 await tablet.goto(BASE, { waitUntil: 'domcontentloaded' });
 await tablet.locator('h1').waitFor();
 await tablet.waitForTimeout(500);
+const tabletShow = tablet.getByRole('button', { name: 'إظهار', exact: true });
+if (await tabletShow.count()) {
+  await tabletShow.click();
+  await tablet.waitForTimeout(200);
+}
 await tablet.getByRole('button', { name: /Tux/ }).first().click();
 await tablet.locator('canvas').waitFor({ state: 'visible' });
 await tablet.waitForTimeout(500);

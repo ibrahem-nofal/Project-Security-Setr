@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="960" viewBox="0 0 960 960">
+  <defs>
+    <linearGradient id="h" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0b1026"/>
+      <stop offset="20%" stop-color="#594ff4"/>
+      <stop offset="40%" stop-color="#00c2ff"/>
+      <stop offset="60%" stop-color="#37d67a"/>
+      <stop offset="80%" stop-color="#ffb703"/>
+      <stop offset="100%" stop-color="#ff4d6d"/>
+    </linearGradient>
+    <linearGradient id="v" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="960" fill="url(#h)"/>
+  <rect width="960" height="960" fill="url(#v)"/>
+  <g opacity="0.35">
+    <rect x="0" y="120" width="960" height="60" fill="#ffffff"/>
+    <rect x="0" y="300" width="960" height="60" fill="#ffffff"/>
+    <rect x="0" y="480" width="960" height="60" fill="#ffffff"/>
+    <rect x="0" y="660" width="960" height="60" fill="#ffffff"/>
+    <rect x="0" y="840" width="960" height="60" fill="#ffffff"/>
+  </g>
+  <g>
+    <circle cx="180" cy="180" r="110" fill="#ffffff" fill-opacity="0.18"/>
+    <circle cx="780" cy="240" r="150" fill="#000000" fill-opacity="0.12"/>
+    <circle cx="240" cy="760" r="170" fill="#000000" fill-opacity="0.12"/>
+    <circle cx="760" cy="760" r="120" fill="#ffffff" fill-opacity="0.18"/>
+  </g>
+  <rect x="60" y="60" width="840" height="840" rx="36" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="8"/>
+</svg>

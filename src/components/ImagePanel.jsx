@@ -21,7 +21,7 @@ export default function ImagePanel({
 }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
-  const [presetsOpen, setPresetsOpen] = useState(true);
+  const [presetsOpen, setPresetsOpen] = useState(false);
 
   const loadedName = image?.fileName || cipher?.sourceName || null;
   const dimensions = view ? `${view.width} × ${view.height}` : null;
@@ -112,7 +112,7 @@ export default function ImagePanel({
           <div className="flex min-w-0 items-baseline gap-1.5">
             <p className="text-[9.5px] font-medium text-graphite">نماذج جاهزة</p>
             <p className="truncate text-[8.5px] text-muted">
-              {presetsOpen ? 'للاختبار السريع' : 'Tux · Alice · نقش'}
+              {presetsOpen ? '5 صور لاختبار أنماط التشفير' : 'Tux · Alice · شبكة · تدرج · وثيقة'}
             </p>
           </div>
           <button
@@ -133,7 +133,7 @@ export default function ImagePanel({
         </div>
 
         {presetsOpen && (
-          <div id="preset-grid" className="animate-fade grid grid-cols-3 gap-1.5 px-2 pb-2">
+          <div id="preset-grid" className="animate-fade grid grid-cols-3 gap-1.5 px-2 pb-2 sm:grid-cols-5">
             {PRESETS.map((preset) => {
               const active = activePreset === preset.id;
               return (

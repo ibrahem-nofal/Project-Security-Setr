@@ -1,14 +1,10 @@
-import { Info, RefreshCw } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { MODES } from '../lib/constants.js';
 import { cn } from '../lib/encoding.js';
 
 export default function ModeSelector({
   mode,
   onChange,
-  ivHex,
-  onIvChange,
-  onRegenerateIv,
-  ivValid,
   operation,
   hasCipher,
   disabled = false,
@@ -63,59 +59,21 @@ export default function ModeSelector({
         })}
       </div>
 
-      {mode !== 'ECB' && (
-        <div className="mt-2.5 animate-fade rounded-[12px] border border-hairline bg-white/70 p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="iv-field" className="text-[10px] font-medium text-graphite">
-              {mode === 'CBC' ? 'متجه التهيئة (IV)' : 'العدّاد الأولي (Nonce / IV)'}
-            </label>
-            <button
-              type="button"
-              onClick={onRegenerateIv}
-              disabled={disabled}
-              className="grid h-5 w-5 place-items-center rounded-[5px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:cursor-not-allowed disabled:opacity-40"
-              title="توليد قيمة عشوائية جديدة"
-              aria-label="توليد قيمة عشوائية جديدة"
-            >
-              <RefreshCw size={10} aria-hidden="true" />
-            </button>
-          </div>
-
-          <input
-            id="iv-field"
-            dir="ltr"
-            value={ivHex}
-            onChange={(event) => onIvChange(event.target.value)}
-            disabled={disabled}
-            maxLength={32}
-            spellCheck={false}
-            autoComplete="off"
-            placeholder="32 hex characters"
-            aria-invalid={!ivValid}
-            className={cn(
-              'ltr mt-1.5 w-full rounded-[8px] border bg-white px-2.5 py-2 font-mono text-[10px] tracking-[0.03em] outline-none transition-colors focus:border-signal',
-              ivValid ? 'border-hairline' : 'border-danger/40',
-            )}
-          />
-
-          {!ivValid ? (
-            <p className="mt-1 text-[9px] text-danger">القيمة تحتاج 32 خانة سداسية (128 بت).</p>
-          ) : (
-            <p className="mt-1 text-[9px] leading-4 text-muted">
-              {mode === 'CBC'
-                ? 'يُدمج مع الكتلة الأولى قبل التشفير، ويُحفظ مع الحزمة.'
-                : 'يُشفَّر العدّاد المتزايد لإنتاج تدفق المفاتيح.'}
-            </p>
-          )}
-        </div>
-      )}
+      <p className="mt-2 flex items-start gap-1.5 rounded-[9px] bg-white/60 px-2 py-1.5 text-[9px] leading-4 text-muted">
+        <Info size={11} className="mt-[1px] shrink-0" aria-hidden="true" />
+        <span>
+          {mode === 'ECB'
+            ? 'نمط ECB لا يستخدم IV — أدرج المفتاح والمعاملات من الخطوة 3.'
+            : 'أدرج المفتاح و IV (32 خانة سداسية) من الخطوة 3 لإتمام الإعداد.'}
+        </span>
+      </p>
 
       {operation === 'decrypt' && hasCipher && (
-        <p className="mt-2.5 flex items-start gap-1.5 rounded-[9px] bg-white/60 px-2 py-1.5 text-[9px] leading-4 text-muted">
+        <p className="mt-1.5 flex items-start gap-1.5 rounded-[9px] bg-white/60 px-2 py-1.5 text-[9px] leading-4 text-muted">
           <Info size={11} className="mt-[1px] shrink-0" aria-hidden="true" />
           <span>
             فك تشفير <span className="font-mono">.sitr</span> يستخدم النمط و IV المحفوظين داخل
-            الحزمة. أما صور PNG المشفّرة فتستخدم النمط و IV المعروضين أعلاه.
+            الحزمة. أما صور PNG المشفّرة فتستخدم النمط و IV المعروضين في الخطوة 3.
           </span>
         </p>
       )}

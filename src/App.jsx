@@ -46,14 +46,12 @@ function describeCryptoError(error) {
   switch (code) {
     case 'AUTH_FAILED':
     case 'PADDING_INVALID':
-      return 'تعذّر فك التشفير: المفتاح أو النمط أو IV لا يطابق هذه البيانات.';
-    case 'INVALID_KEY_LENGTH':
-      return 'طول المفتاح لا يطابق النمط المطلوب.';
     case 'KEY_MISMATCH':
     case 'MODE_MISMATCH':
-      return 'معطيات الحزمة لا تطابق العملية. أعد ضبط النمط وطول المفتاح.';
     case 'INVALID_IV':
-      return 'متجه التهيئة غير صالح — يتطلب 32 خانة سداسية (128 بت).';
+      return 'المفتاح أو متجه التهيئة IV غير صحيح لهذا النمط';
+    case 'INVALID_KEY_LENGTH':
+      return 'طول المفتاح لا يطابق النمط المطلوب.';
     case 'WORKER_UNAVAILABLE':
     case 'WORKER_TERMINATED':
     case 'WORKER_CRASHED':
@@ -204,6 +202,12 @@ export default function App() {
 
       const preview = buildCipherImageData(parsed.cipher);
       const entropy = computeEntropy(parsed.cipher);
+      const encryptedFrame = {
+        imageData: preview.imageData,
+        width: preview.width,
+        height: preview.height,
+        name: file.name.replace(/\.sitr$/i, '') || 'cipher',
+      };
       setCipher({
         bytes: parsed.cipher,
         width: preview.width,
@@ -217,12 +221,13 @@ export default function App() {
         sourceName: file.name.replace(/\.sitr$/i, '') || 'image',
         sourceWidth: null,
         sourceHeight: null,
+        lockedParams: true,
       });
       setMode(parsed.mode);
       setIvHex(parsed.ivHex);
       if (parsed.keyBits) setKeyBits(parsed.keyBits);
       setImage(null);
-      setReference(null);
+      setReference(encryptedFrame);
       setActivePreset(null);
       setView({
         imageData: preview.imageData,
@@ -259,86 +264,61 @@ export default function App() {
   }
 
   /**
-   * Try to interpret a PNG as an encrypted-pixel image. Returns true when
-   * the file was recognized (and decrypted), false when it is a normal
-   * image that should follow the source-image path.
+   * Load a PNG as encrypted pixel input for manual decryption (no auto-decrypt).
+   * Pixels are read losslessly (no downscale/flatten/smoothing) so ciphertext
+   * bytes remain intact until the user clicks "فك تشفير الصورة".
    */
-  async function importEncryptedPng(file) {
-    if (busy) return false;
+  async function loadEncryptedInputPng(file) {
+    if (busy) return;
     const token = (loadToken.current += 1);
     setLoadingImage(true);
     setActionError('');
     try {
       const { imageData } = await loadImagePixelsFromFile(file);
-      if (token !== loadToken.current) return true;
+      if (token !== loadToken.current) return;
 
       const pixels = imageDataToRgb(imageData);
-      const key = hexToBytes(keyHex);
-      const iv = ivValid ? hexToBytes(ivHex) : new Uint8Array(16);
-      const result = await run(
-        'decrypt-pixels',
-        { cipher: pixels, mode, key, iv },
-        setProgress,
-      );
-      if (token !== loadToken.current) return true;
-
-      const cipherBytes = pixels.slice(0, result.cipherLength);
-      const cipherEntropy = computeEntropy(cipherBytes);
-      const restored = bytesToImageData(result.rgb, result.width, result.height);
-      const restoredEntropy = computeEntropy(result.rgb);
-
-      setCipher({
-        bytes: cipherBytes,
+      const entropy = computeEntropy(pixels);
+      const name = file.name.replace(/\.[^.]+$/, '') || 'cipher';
+      const frame = {
+        imageData,
         width: imageData.width,
         height: imageData.height,
-        displayWidth: imageData.width,
-        displayHeight: imageData.height,
-        previewTruncated: false,
-        mode,
-        keyBits: result.keyBits,
-        ivHex: bytesToHex(iv),
-        sourceName: file.name.replace(/\.[^.]+$/, ''),
-        sourceWidth: result.width,
-        sourceHeight: result.height,
-      });
+        name,
+      };
+
+      // Show encrypted input preview and reset any restored/output state.
       setImage(null);
-      setReference({
-        imageData: restored,
-        width: result.width,
-        height: result.height,
-        name: 'restored',
-      });
+      setCipher(null);
       setActivePreset(null);
+      setReference(frame);
       setView({
-        imageData: restored,
-        kind: 'decrypted',
-        width: result.width,
-        height: result.height,
-        sourceWidth: result.width,
-        sourceHeight: result.height,
+        imageData,
+        kind: 'encrypted',
+        width: imageData.width,
+        height: imageData.height,
+        sourceWidth: null,
+        sourceHeight: null,
       });
       setStats({
-        originalEntropy: restoredEntropy,
-        cipherEntropy,
-        currentEntropy: restoredEntropy,
-        blocks: blockCount(cipherBytes.length),
+        originalEntropy: null,
+        cipherEntropy: entropy,
+        currentEntropy: entropy,
+        blocks: blockCount(pixels.length),
         duration: null,
       });
-      setKeyBits(result.keyBits);
-      setOperation('encrypt');
+      setOperation('decrypt');
       setProgress(0);
       resetComparison();
-      notify('تم التعرف على صورة PNG مشفّرة وفك تشفيرها بالمفتاح والنمط الحاليين.');
-      return true;
+      notify('تم تحميل صورة PNG مشفّرة كمدخل — اضبط المفتاح وIV ثم اضغط «فك تشفير الصورة».');
     } catch (error) {
-      if (token !== loadToken.current) return true;
-      if (error?.code === 'IMAGE_TOO_LARGE' || error?.message === 'IMAGE_TOO_LARGE') {
-        const message = describeCryptoError(error);
-        setActionError(message);
-        notify(message, 'error');
-        return true;
-      }
-      return false;
+      if (token !== loadToken.current) return;
+      const message =
+        error?.code === 'IMAGE_TOO_LARGE' || error?.message === 'IMAGE_TOO_LARGE'
+          ? describeCryptoError(error)
+          : 'تعذّر قراءة صورة PNG المشفّرة. تأكد من الملف وحاول مرة أخرى.';
+      setActionError(message);
+      notify(message, 'error');
     } finally {
       if (token === loadToken.current) setLoadingImage(false);
     }
@@ -359,18 +339,12 @@ export default function App() {
     }
 
     const looksEncryptedName = /cipher|encrypted|مشفّر/i.test(file.name);
-    const shouldProbe = isPngFile(file) && keyValid && (operation === 'decrypt' || looksEncryptedName);
 
-    if (shouldProbe) {
-      const handled = await importEncryptedPng(file);
-      if (handled) return;
-      if (looksEncryptedName) {
-        const message =
-          'تعذّر التعرف على صورة PNG مشفّرة — تأكد من النمط والمفتاح و IV، أو استورد ملف .sitr.';
-        setActionError(message);
-        notify(message, 'error');
-        return;
-      }
+    // Prevent auto-decryption on file drop: load encrypted PNGs as input preview
+    // (lossless pixels) and wait for an explicit "فك تشفير الصورة" action.
+    if (isPngFile(file) && (operation === 'decrypt' || looksEncryptedName)) {
+      await loadEncryptedInputPng(file);
+      return;
     }
 
     const token = (loadToken.current += 1);
@@ -509,23 +483,135 @@ export default function App() {
 
   async function handleDecrypt() {
     if (busy) return;
-    if (!cipher) {
-      setActionError('لا توجد حزمة مشفّرة. شفّر صورة أولاً أو استورد ملف .sitr / PNG.');
+
+    // Path A: decrypt an imported/stored cipher package (.sitr or probed PNG)
+    if (cipher) {
+      if (cipher.keyBits != null && !isHexOfLength(keyHex, cipher.keyBits / 4)) {
+        const message = `مفتاح هذه الحزمة بطول ${cipher.keyBits} بت (${cipher.keyBits / 4} خانة سداسية).`;
+        setActionError(message);
+        notify(message, 'error');
+        return;
+      }
+      if (!keyValid) {
+        const message = 'أكمل المفتاح قبل فك التشفير، أو اختر الطول المطابق للحزمة.';
+        setActionError(message);
+        notify(message, 'error');
+        return;
+      }
+      if (cipher.mode !== 'ECB' && !isHexOfLength(cipher.ivHex, 32)) {
+        const message = 'المفتاح أو متجه التهيئة IV غير صحيح لهذا النمط';
+        setActionError(message);
+        notify(message, 'error');
+        return;
+      }
+
+      const key = hexToBytes(keyHex);
+      const iv =
+        cipher.mode === 'ECB' || !isHexOfLength(cipher.ivHex, 32)
+          ? new Uint8Array(16)
+          : hexToBytes(cipher.ivHex);
+      const started = performance.now();
+
+      setBusy(true);
+      setProgress(0);
+      setActionError('');
+
+      try {
+        const result = await run(
+          'decrypt',
+          { cipher: cipher.bytes, mode: cipher.mode, key, iv },
+          setProgress,
+        );
+
+        const restoredEntropy = computeEntropy(result.rgb);
+        const restored = bytesToImageData(result.rgb, result.width, result.height);
+
+        const encryptedBefore =
+          view?.kind === 'encrypted'
+            ? {
+                imageData: view.imageData,
+                width: view.width,
+                height: view.height,
+                name: cipher.sourceName || 'cipher',
+              }
+            : reference && view?.kind === 'decrypted'
+              ? reference
+              : (() => {
+                  const displayWidth = cipher.displayWidth ?? cipher.width;
+                  const displayHeight = cipher.displayHeight ?? cipher.height;
+                  return {
+                    imageData: bytesToImageData(cipher.bytes, displayWidth, displayHeight),
+                    width: displayWidth,
+                    height: displayHeight,
+                    name: cipher.sourceName || 'cipher',
+                  };
+                })();
+
+        setView({
+          imageData: restored,
+          kind: 'decrypted',
+          width: result.width,
+          height: result.height,
+          sourceWidth: result.width,
+          sourceHeight: result.height,
+        });
+        setReference(encryptedBefore);
+        setCipher((previous) =>
+          previous
+            ? {
+                ...previous,
+                keyBits: result.keyBits,
+                sourceWidth: result.width,
+                sourceHeight: result.height,
+              }
+            : previous,
+        );
+        setKeyBits(result.keyBits);
+        setStats((previous) => ({
+          originalEntropy: previous?.originalEntropy ?? restoredEntropy,
+          cipherEntropy: previous?.cipherEntropy ?? computeEntropy(cipher.bytes),
+          currentEntropy: restoredEntropy,
+          blocks: blockCount(cipher.bytes.length),
+          duration: performance.now() - started,
+        }));
+        setOperation('encrypt');
+        setProgress(1);
+        resetComparison();
+        notify('تم فك التشفير واستعادة الصورة الأصلية بنجاح.');
+      } catch (error) {
+        const message = describeCryptoError(error);
+        setActionError(message);
+        notify(message, 'error');
+      } finally {
+        setBusy(false);
+        setProgress(0);
+      }
       return;
     }
-    if (cipher.keyBits != null && !isHexOfLength(keyHex, cipher.keyBits / 4)) {
-      setActionError(
-        `مفتاح هذه الحزمة بطول ${cipher.keyBits} بت (${cipher.keyBits / 4} خانة سداسية).`,
-      );
+
+    // Path B: decrypt pixels from the currently loaded/viewed image (e.g. encrypted PNG loaded as source)
+    if (!view) {
+      const message = 'لا توجد حزمة مشفّرة. شفّر صورة أولاً أو استورد ملف .sitr / PNG.';
+      setActionError(message);
+      notify(message, 'error');
       return;
     }
     if (!keyValid) {
-      setActionError('أكمل المفتاح قبل فك التشفير، أو اختر الطول المطابق للحزمة.');
+      const message = 'أكمل المفتاح قبل فك التشفير.';
+      setActionError(message);
+      notify(message, 'error');
+      return;
+    }
+    if (mode !== 'ECB' && !ivValid) {
+      const message = 'المفتاح أو متجه التهيئة IV غير صحيح لهذا النمط';
+      setActionError(message);
+      notify(message, 'error');
       return;
     }
 
     const key = hexToBytes(keyHex);
-    const iv = hexToBytes(cipher.ivHex) || new Uint8Array(16);
+    const ivBytes = mode === 'ECB' ? new Uint8Array(16) : hexToBytes(ivHex);
+    const pixels = imageDataToRgb(view.imageData);
     const started = performance.now();
 
     setBusy(true);
@@ -534,14 +620,37 @@ export default function App() {
 
     try {
       const result = await run(
-        'decrypt',
-        { cipher: cipher.bytes, mode: cipher.mode, key, iv },
+        'decrypt-pixels',
+        { cipher: pixels, mode, key, iv: ivBytes },
         setProgress,
       );
 
-      const restoredEntropy = computeEntropy(result.rgb);
+      const cipherBytes = pixels.slice(0, result.cipherLength);
+      const cipherEntropy = computeEntropy(cipherBytes);
       const restored = bytesToImageData(result.rgb, result.width, result.height);
+      const restoredEntropy = computeEntropy(result.rgb);
+      const encryptedFrame = {
+        imageData: view.imageData,
+        width: view.width,
+        height: view.height,
+        name: image?.name || image?.fileName || 'cipher',
+      };
 
+      setCipher({
+        bytes: cipherBytes,
+        width: view.width,
+        height: view.height,
+        displayWidth: view.width,
+        displayHeight: view.height,
+        previewTruncated: false,
+        mode,
+        keyBits: result.keyBits,
+        ivHex: bytesToHex(ivBytes),
+        sourceName: image?.name || image?.fileName || 'image',
+        sourceWidth: result.width,
+        sourceHeight: result.height,
+        lockedParams: false,
+      });
       setView({
         imageData: restored,
         kind: 'decrypted',
@@ -550,34 +659,20 @@ export default function App() {
         sourceWidth: result.width,
         sourceHeight: result.height,
       });
-      setReference((previous) =>
-        previous ?? {
-          imageData: restored,
-          width: result.width,
-          height: result.height,
-          name: 'restored',
-        },
-      );
-      setCipher((previous) =>
-        previous
-          ? {
-              ...previous,
-              keyBits: result.keyBits,
-              sourceWidth: result.width,
-              sourceHeight: result.height,
-            }
-          : previous,
-      );
+      setReference(encryptedFrame);
+      setImage(null);
+      setActivePreset(null);
       setKeyBits(result.keyBits);
-      setStats((previous) => ({
-        originalEntropy: previous?.originalEntropy ?? restoredEntropy,
-        cipherEntropy: previous?.cipherEntropy ?? computeEntropy(cipher.bytes),
+      setStats({
+        originalEntropy: restoredEntropy,
+        cipherEntropy,
         currentEntropy: restoredEntropy,
-        blocks: blockCount(cipher.bytes.length),
+        blocks: blockCount(cipherBytes.length),
         duration: performance.now() - started,
-      }));
+      });
       setOperation('encrypt');
       setProgress(1);
+      resetComparison();
       notify('تم فك التشفير واستعادة الصورة الأصلية بنجاح.');
     } catch (error) {
       const message = describeCryptoError(error);
@@ -629,6 +724,29 @@ export default function App() {
       setStats((previous) => ({
         ...previous,
         currentEntropy: entropy,
+      }));
+      setOperation('decrypt');
+      setProgress(0);
+      return;
+    }
+
+    // Encrypted image loaded as manual-decrypt input (no package/source image):
+    // keep input preview and clear any restored output state.
+    if (view?.kind === 'encrypted' && reference) {
+      setView({
+        imageData: reference.imageData,
+        kind: 'encrypted',
+        width: reference.width,
+        height: reference.height,
+        sourceWidth: null,
+        sourceHeight: null,
+      });
+      setStats((previous) => ({
+        originalEntropy: null,
+        cipherEntropy: previous?.cipherEntropy ?? previous?.currentEntropy ?? null,
+        currentEntropy: previous?.currentEntropy ?? previous?.cipherEntropy ?? null,
+        blocks: previous?.blocks ?? null,
+        duration: null,
       }));
       setOperation('decrypt');
       setProgress(0);
@@ -698,7 +816,10 @@ export default function App() {
     if (busy) return;
     setMode(nextMode);
     setActionError('');
-    if (nextMode !== 'ECB' && !ivValid) setIvHex(generateIvHex());
+    // Always generate a fresh IV when switching to CBC/CTR to avoid undefined/stale IV usage.
+    if (nextMode === 'CBC' || nextMode === 'CTR') {
+      setIvHex(generateIvHex());
+    }
   }
 
   function handleIvChange(value) {
@@ -710,7 +831,7 @@ export default function App() {
   function handleRegenerateIv() {
     if (busy) return;
     setIvHex(generateIvHex());
-    notify('تم توليد متجه تهيئة عشوائي جديد (128 بت).');
+    notify('تم توليد IV جديد (128 بت) بنجاح.');
   }
 
   function handleKeyChange(value) {
@@ -770,6 +891,15 @@ export default function App() {
     }
   }
 
+  async function handleCopyIv() {
+    try {
+      await copyText(ivHex);
+      notify('تم نسخ متجه التهيئة (IV) إلى الحافظة.');
+    } catch {
+      notify('تعذّر نسخ متجه التهيئة.', 'error');
+    }
+  }
+
   function handleOperationChange(nextOperation) {
     if (busy) return;
     setOperation(nextOperation);
@@ -805,18 +935,31 @@ export default function App() {
       } else if (view.kind === 'encrypted') {
         ctaReason = 'الناتج مشفّر بالفعل — بدّل العملية إلى «فك التشفير».';
       }
-    } else if (!cipher) {
+    } else if (cipher) {
+      if (cipher.keyBits != null && !isHexOfLength(keyHex, cipher.keyBits / 4)) {
+        ctaReason = `مفتاح هذه الحزمة بطول ${cipher.keyBits} بت (${cipher.keyBits / 4} خانة سداسية).`;
+      } else if (!keyValid) {
+        ctaReason = 'أكمل المفتاح أو اختر الطول المطابق للحزمة.';
+      } else if (view?.kind === 'decrypted') {
+        ctaReason = 'تمت استعادة الصورة بالفعل. بدّل العملية إلى «تشفير».';
+      }
+    } else if (!view) {
       ctaReason = 'لا توجد حزمة مشفّرة في الجلسة. شفّر صورة أو استورد ملف .sitr / PNG.';
-    } else if (cipher.keyBits != null && !isHexOfLength(keyHex, cipher.keyBits / 4)) {
-      ctaReason = `مفتاح هذه الحزمة بطول ${cipher.keyBits} بت (${cipher.keyBits / 4} خانة سداسية).`;
-    } else if (!keyValid) {
-      ctaReason = 'أكمل المفتاح أو اختر الطول المطابق للحزمة.';
-    } else if (view?.kind === 'decrypted') {
+    } else if (view.kind === 'decrypted') {
       ctaReason = 'تمت استعادة الصورة بالفعل. بدّل العملية إلى «تشفير».';
+    } else if (!keyValid) {
+      ctaReason = 'أكمل المفتاح قبل فك التشفير.';
     }
+    // For CBC/CTR without cipher, allow click so handler can show inline/toast error if IV missing/invalid.
   }
 
-  const canReset = !busy && Boolean(view && view.kind !== 'original' && (image || cipher));
+  const canReset =
+    !busy &&
+    Boolean(
+      view &&
+        view.kind !== 'original' &&
+        (image || cipher || (view.kind === 'encrypted' && reference)),
+    );
 
   return (
     <div id="top" className="min-h-screen bg-porcelain">
@@ -833,6 +976,7 @@ export default function App() {
               ivHex={ivHex}
               onIvChange={handleIvChange}
               onRegenerateIv={handleRegenerateIv}
+              onCopyIv={handleCopyIv}
               ivValid={ivValid}
               image={image}
               view={view}

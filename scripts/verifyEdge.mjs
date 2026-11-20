@@ -135,7 +135,7 @@ console.log('truncated ->', await waitForAlert('غير مكتملة'));
 await fileInput.setInputFiles(randomPayload);
 await waitForBadge('مشفّرة');
 await page.getByRole('button', { name: 'فك تشفير الصورة', exact: true }).click();
-console.log('random payload auth ->', await waitForAlert('تعذّر فك التشفير'));
+console.log('random payload auth ->', await waitForAlert('المفتاح أو متجه التهيئة IV غير صحيح لهذا النمط'));
 
 // Recover with a real 1×1 image and complete a full cycle.
 await fileInput.setInputFiles(tinyPng);

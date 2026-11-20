@@ -152,9 +152,13 @@ export default function CanvasStage({
   const stageMode = view && view.kind !== 'original' && cipher ? cipher.mode : mode;
   const stageBits = view && view.kind !== 'original' && cipher ? cipher.keyBits : keyBits;
   const insight = MODE_INSIGHTS[stageMode];
+  const decryptCompare = Boolean(canCompare && view?.kind === 'decrypted');
   const viewLabel =
     view?.kind === 'encrypted' ? 'مشفّرة' : view?.kind === 'decrypted' ? 'مستعادة' : 'أصلية';
   const showingBefore = Boolean(compareOriginal && canCompare);
+  const beforeBadge = decryptCompare ? 'المشفّرة المرفوعة' : 'قبل التشفير';
+  const toggleShowLabel = decryptCompare ? 'عرض المستعادة' : 'عرض بعد التشفير';
+  const toggleBackLabel = decryptCompare ? 'قبل / بعد (فك)' : 'قبل / بعد';
   const statWidth = view?.sourceWidth ?? view?.width;
   const statHeight = view?.sourceHeight ?? view?.height;
 
@@ -188,7 +192,7 @@ export default function CanvasStage({
             ) : (
               <ImageIcon size={10} aria-hidden="true" />
             )}
-            {showingBefore ? 'قبل التشفير' : view ? viewLabel : 'فارغة'}
+            {showingBefore ? beforeBadge : view ? viewLabel : 'فارغة'}
           </span>
 
           <ToolButton
@@ -251,7 +255,7 @@ export default function CanvasStage({
             aria-pressed={showingBefore}
             onClick={onCompareOriginalChange}
             disabled={busy}
-            title="مقارنة سريعة بين قبل وبعد التشفير"
+            title="مقارنة سريعة بين قبل وبعد المعالجة"
             className={cn(
               'inline-flex h-[32px] items-center gap-1.5 rounded-pill border px-2.5 text-[9px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
               showingBefore
@@ -260,7 +264,7 @@ export default function CanvasStage({
             )}
           >
             <ArrowLeftRight size={10} aria-hidden="true" />
-            {showingBefore ? 'عرض بعد التشفير' : 'قبل / بعد'}
+            {showingBefore ? toggleShowLabel : toggleBackLabel}
           </button>
         </div>
       )}

@@ -41,7 +41,16 @@ async function screenshot(name, fullPage = true) {
   console.log(`SHOT ${name}`);
 }
 
+async function ensurePresetsOpen() {
+  const show = sidebar.getByRole('button', { name: 'إظهار', exact: true });
+  if (await show.count()) {
+    await show.click();
+    await page.waitForTimeout(200);
+  }
+}
+
 async function loadPreset(name) {
+  await ensurePresetsOpen();
   await sidebar.getByRole('button', { name: new RegExp(name) }).click();
   await page.locator('canvas').waitFor({ state: 'visible', timeout: 30000 });
   await page.waitForTimeout(350);
@@ -108,7 +117,11 @@ await ctaDecrypt.click();
 await page.waitForTimeout(1200);
 const errorVisible = await page.getByRole('alert').first().isVisible().catch(() => false);
 console.log('wrong-key error visible =', errorVisible);
-if (errorVisible) console.log('error =', await page.getByRole('alert').first().innerText());
+if (errorVisible) const errText = await page.getByRole('alert').first().innerText();
+console.log('error =', errText);
+if (!/المفتاح أو متجه التهيئة IV غير صحيح لهذا النمط/.test(errText)) {
+  throw new Error(`Unexpected wrong-key error text: ${errText}`);
+}
 await screenshot('08-wrong-key.png');
 
 // CTR mode ---------------------------------------------------------------
@@ -135,6 +148,11 @@ await mobile.locator('h1').waitFor({ state: 'visible' });
 await mobile.waitForTimeout(600);
 await mobile.screenshot({ path: path.join(SHOTS, '11-mobile-initial.png'), fullPage: true });
 await mobile.screenshot({ path: path.join(SHOTS, '12-mobile-viewport.png') });
+const mobileShow = mobile.getByRole('button', { name: 'إظهار', exact: true });
+if (await mobileShow.count()) {
+  await mobileShow.click();
+  await mobile.waitForTimeout(200);
+}
 await mobile.getByRole('button', { name: /Tux/ }).first().click();
 await mobile.waitForTimeout(800);
 await mobile.getByRole('button', { name: 'تشفير الصورة', exact: true }).click();

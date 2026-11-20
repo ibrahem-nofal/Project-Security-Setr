@@ -47,7 +47,16 @@ async function waitForNoAlert() {
   );
 }
 
+async function ensurePresetsOpen() {
+  const show = sidebar.getByRole('button', { name: 'إظهار', exact: true });
+  if (await show.count()) {
+    await show.click();
+    await page.waitForTimeout(200);
+  }
+}
+
 async function loadPreset(name) {
+  await ensurePresetsOpen();
   await sidebar.getByRole('button', { name: new RegExp(name) }).click();
   await page.locator('canvas').waitFor({ state: 'visible', timeout: 30000 });
   await page.waitForTimeout(400);
@@ -68,7 +77,7 @@ await page.locator('h1').waitFor({ state: 'visible' });
 await page.waitForTimeout(700);
 
 /* ------------------------------------------------------------------ */
-/* Task 3 — key input / copy icon alignment                            */
+/* Task 3 — key input / copy icon alignment + IV in Step 3             */
 /* ------------------------------------------------------------------ */
 const keyBox = await keyInput.boundingBox();
 const copyBox = await page.getByRole('button', { name: 'نسخ المفتاح' }).boundingBox();
@@ -85,7 +94,16 @@ if (Number.parseFloat(keyStyles.paddingRight) < 40) throw new Error('key field r
 if (keyStyles.direction !== 'ltr') throw new Error('key field must be LTR');
 if (copyBox.x < keyBox.x + keyBox.width / 2) throw new Error('copy icon is on the text-start side');
 if (copyBox.x + copyBox.width > keyBox.x + keyBox.width + 1) throw new Error('copy icon overflows field');
-console.log('Task 3: key field + copy icon alignment passed', {
+await sidebar.getByText('إدارة المفتاح والمعاملات', { exact: false }).waitFor({ state: 'visible' });
+if (!(await page.locator('#iv-field').isVisible())) throw new Error('IV field missing in Step 3');
+await sidebar.getByRole('button', { name: /ECB/ }).click();
+await page.waitForTimeout(150);
+await sidebar.getByText('نمط ECB لا يتطلب IV', { exact: false }).waitFor({ state: 'visible' });
+await sidebar.getByRole('button', { name: /CBC/ }).click();
+await page.waitForTimeout(150);
+await sidebar.getByRole('button', { name: /ECB/ }).click();
+await page.waitForTimeout(150);
+console.log('Task 3: key alignment + Step 3 IV integration passed', {
   paddingRight: keyStyles.paddingRight,
   gap: Math.round(keyBox.x + keyBox.width - (copyBox.x + copyBox.width)),
 });
@@ -93,17 +111,21 @@ console.log('Task 3: key field + copy icon alignment passed', {
 /* ------------------------------------------------------------------ */
 /* Task 2 — collapsible presets                                        */
 /* ------------------------------------------------------------------ */
-const hidePresets = sidebar.getByRole('button', { name: 'إخفاء', exact: true });
-const presetGrid = page.locator('#preset-grid');
-if (!(await presetGrid.isVisible())) throw new Error('preset grid should start visible');
-await hidePresets.click();
-await page.waitForTimeout(250);
-if (await presetGrid.isVisible().catch(() => false)) throw new Error('preset grid did not collapse');
 const showPresets = sidebar.getByRole('button', { name: 'إظهار', exact: true });
+const presetGrid = page.locator('#preset-grid');
+if (await presetGrid.isVisible().catch(() => false)) {
+  throw new Error('preset grid should start collapsed by default');
+}
 await showPresets.click();
 await page.waitForTimeout(250);
 if (!(await presetGrid.isVisible())) throw new Error('preset grid did not expand');
-console.log('Task 2: presets collapse/expand passed');
+const hidePresets = sidebar.getByRole('button', { name: 'إخفاء', exact: true });
+await hidePresets.click();
+await page.waitForTimeout(250);
+if (await presetGrid.isVisible().catch(() => false)) throw new Error('preset grid did not collapse');
+await showPresets.click();
+await page.waitForTimeout(250);
+console.log('Task 2: presets collapsed-by-default + expand/collapse passed');
 
 /* ------------------------------------------------------------------ */
 /* Task 1 — full workspace drag & drop                                 */
@@ -181,7 +203,7 @@ await waitForNoAlert();
 console.log('Task 5a: .sitr ECB export → reload → import → decrypt passed');
 
 /* ------------------------------------------------------------------ */
-/* Task 5b — encrypted PNG round-trip (ECB)                            */
+/* Task 5b — encrypted PNG round-trip (ECB, manual decrypt)            */
 /* ------------------------------------------------------------------ */
 await ctaEncrypt.click();
 await waitForBadge('مشفّرة');
@@ -195,10 +217,13 @@ await page.waitForTimeout(500);
 await keyInput.fill(originalKey);
 await page.waitForTimeout(250);
 await page.locator('input[type=file]').setInputFiles(pngPath);
+await waitForBadge('مشفّرة');
+await sidebar.getByRole('button', { name: 'فك التشفير', exact: true }).click();
+await page.waitForTimeout(150);
+await ctaDecrypt.click();
 await waitForBadge('مستعادة');
 await waitForNoAlert();
-console.log('Task 5b: encrypted PNG export → reload → import → auto-decrypt passed');
-
+console.log('Task 5b: encrypted PNG export → reload → import → manual decrypt passed');
 /* ------------------------------------------------------------------ */
 /* Task 5c — CBC .sitr carries mode + IV                               */
 /* ------------------------------------------------------------------ */
@@ -230,7 +255,7 @@ await waitForNoAlert();
 console.log('Task 5c: CBC .sitr auto-restores mode + IV and decrypts passed');
 
 /* ------------------------------------------------------------------ */
-/* Task 5d — encrypted PNG round-trip for CBC and CTR                  */
+/* Task 5d — encrypted PNG round-trip for CBC and CTR (manual decrypt) */
 /* ------------------------------------------------------------------ */
 for (const modeName of ['CBC', 'CTR']) {
   await sidebar.getByRole('button', { name: new RegExp(modeName) }).click();
@@ -244,15 +269,19 @@ for (const modeName of ['CBC', 'CTR']) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('h1').waitFor({ state: 'visible' });
   await page.waitForTimeout(500);
+  await sidebar.getByRole('button', { name: 'فك التشفير', exact: true }).click();
+  await page.waitForTimeout(150);
   await sidebar.getByRole('button', { name: new RegExp(modeName) }).click();
   await page.waitForTimeout(200);
   await page.locator('#iv-field').fill(modeIv);
   await keyInput.fill(modeKey);
   await page.waitForTimeout(250);
   await page.locator('input[type=file]').setInputFiles(modePng);
+  await waitForBadge('مشفّرة');
+  await ctaDecrypt.click();
   await waitForBadge('مستعادة');
   await waitForNoAlert();
-  console.log(`Task 5d: encrypted PNG ${modeName} round-trip passed`);
+  console.log(`Task 5d: encrypted PNG ${modeName} round-trip (manual decrypt) passed`);
 }
 
 await page.screenshot({ path: path.join(SHOTS, 'final.png'), fullPage: true });

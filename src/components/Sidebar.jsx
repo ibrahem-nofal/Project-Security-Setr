@@ -22,6 +22,7 @@ export default function Sidebar({
   ivHex,
   onIvChange,
   onRegenerateIv,
+  onCopyIv,
   ivValid,
   image,
   view,
@@ -106,14 +107,10 @@ export default function Sidebar({
       )}
 
       <div className="mt-5">
-        <StepSection number="01" title="نمط التشفير" hint="ECB · CBC · CTR — مع أطوال 128/256">
+        <StepSection number="01" title="نمط التشفير" hint="ECB · CBC · CTR — اختر النمط قبل التنفيذ">
           <ModeSelector
             mode={mode}
             onChange={onModeChange}
-            ivHex={ivHex}
-            onIvChange={onIvChange}
-            onRegenerateIv={onRegenerateIv}
-            ivValid={ivValid}
             operation={operation}
             hasCipher={Boolean(cipher)}
             disabled={busy}
@@ -132,8 +129,9 @@ export default function Sidebar({
           />
         </StepSection>
 
-        <StepSection number="03" title="إدارة المفتاح" hint="توليد عشوائي آمن أو اشتقاق من جملة">
+        <StepSection number="03" title="إدارة المفتاح والمعاملات" hint="المفتاح السداسي و IV في كتلة واحدة">
           <KeyPanel
+            mode={mode}
             keyBits={keyBits}
             onKeyBitsChange={onKeyBitsChange}
             keyHex={keyHex}
@@ -143,6 +141,11 @@ export default function Sidebar({
             onGenerate={onGenerateKey}
             onDerive={onDeriveKey}
             onCopy={onCopyKey}
+            ivHex={ivHex}
+            onIvChange={onIvChange}
+            onRegenerateIv={onRegenerateIv}
+            ivValid={ivValid}
+            onCopyIv={onCopyIv}
             disabled={busy}
           />
         </StepSection>

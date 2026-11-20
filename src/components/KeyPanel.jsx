@@ -4,8 +4,10 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Info,
   KeyRound,
   LoaderCircle,
+  RefreshCw,
   Sparkles,
   WandSparkles,
 } from 'lucide-react';
@@ -13,6 +15,7 @@ import { KEY_SIZES, PBKDF2_ITERATIONS } from '../lib/constants.js';
 import { cn, formatNumber } from '../lib/encoding.js';
 
 export default function KeyPanel({
+  mode,
   keyBits,
   onKeyBitsChange,
   keyHex,
@@ -22,6 +25,11 @@ export default function KeyPanel({
   onGenerate,
   onDerive,
   onCopy,
+  ivHex,
+  onIvChange,
+  onRegenerateIv,
+  ivValid,
+  onCopyIv,
   disabled = false,
 }) {
   const [passphraseOpen, setPassphraseOpen] = useState(false);
@@ -30,13 +38,17 @@ export default function KeyPanel({
   const [deriving, setDeriving] = useState(false);
   const [deriveError, setDeriveError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [ivCopied, setIvCopied] = useState(false);
   const copyTimer = useRef(null);
+  const ivCopyTimer = useRef(null);
 
   const charLength = keyBits / 4;
+  const needsIv = mode !== 'ECB';
 
   useEffect(() => {
     return () => {
       if (copyTimer.current) window.clearTimeout(copyTimer.current);
+      if (ivCopyTimer.current) window.clearTimeout(ivCopyTimer.current);
     };
   }, []);
 
@@ -65,6 +77,14 @@ export default function KeyPanel({
     setCopied(true);
     if (copyTimer.current) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  function handleCopyIv() {
+    if (!onCopyIv) return;
+    onCopyIv();
+    setIvCopied(true);
+    if (ivCopyTimer.current) window.clearTimeout(ivCopyTimer.current);
+    ivCopyTimer.current = window.setTimeout(() => setIvCopied(false), 1600);
   }
 
   return (
@@ -96,70 +116,159 @@ export default function KeyPanel({
         </div>
       </div>
 
-      <div className="mt-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor="key-hex" className="text-[10px] font-medium text-graphite">
-            المفتاح بصيغة Hex
-          </label>
-          <span className="font-mono text-[9px] text-muted tnum">
-            {keyHex.length}/{charLength}
-          </span>
-        </div>
+      <div className="mt-2.5 space-y-2">
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="key-hex" className="text-[10px] font-medium text-graphite">
+              المفتاح بصيغة Hex
+            </label>
+            <span className="font-mono text-[9px] text-muted tnum">
+              {keyHex.length}/{charLength}
+            </span>
+          </div>
 
-        <div className="relative mt-1" dir="ltr">
-          <input
-            id="key-hex"
-            dir="ltr"
-            value={keyHex}
-            onChange={(event) => onKeyChange(event.target.value)}
-            onPaste={(event) => {
-              if (!onKeyPaste) return;
-              const text = event.clipboardData?.getData('text');
-              if (!text) return;
-              event.preventDefault();
-              onKeyPaste(text);
-            }}
-            disabled={disabled}
-            maxLength={charLength}
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            placeholder={keyBits === 256 ? '64 hex · 256-bit key' : '32 hex · 128-bit key'}
-            aria-invalid={!keyValid}
-            className={cn(
-              'ltr block h-10 w-full rounded-[9px] border bg-white pl-3 pr-12 font-mono text-[10px] tracking-[0.01em] outline-none transition-colors focus:border-signal',
-              keyValid ? 'border-hairline' : 'border-danger/40',
-            )}
-          />
-          <span className="pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-[7px] bg-white">
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={!keyValid || disabled}
-              title="نسخ المفتاح"
-              aria-label="نسخ المفتاح"
-              className="pointer-events-auto grid h-7 w-7 place-items-center rounded-[7px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
-            >
-              {copied ? (
-                <Check size={12} className="text-signal" aria-hidden="true" />
-              ) : (
-                <Copy size={12} aria-hidden="true" />
+          <div className="relative mt-1" dir="ltr">
+            <input
+              id="key-hex"
+              dir="ltr"
+              value={keyHex}
+              onChange={(event) => onKeyChange(event.target.value)}
+              onPaste={(event) => {
+                if (!onKeyPaste) return;
+                const text = event.clipboardData?.getData('text');
+                if (!text) return;
+                event.preventDefault();
+                onKeyPaste(text);
+              }}
+              disabled={disabled}
+              maxLength={charLength}
+              spellCheck={false}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              placeholder={keyBits === 256 ? '64 hex · 256-bit key' : '32 hex · 128-bit key'}
+              aria-invalid={!keyValid}
+              className={cn(
+                'ltr block h-10 w-full rounded-[9px] border bg-white pl-3 pr-12 font-mono text-[10px] tracking-[0.01em] outline-none transition-colors focus:border-signal',
+                keyValid ? 'border-hairline' : 'border-danger/40',
               )}
-            </button>
-          </span>
+            />
+            <span className="pointer-events-none absolute right-1.5 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-[7px] bg-white">
+              <button
+                type="button"
+                onClick={handleCopy}
+                disabled={!keyValid || disabled}
+                title="نسخ المفتاح"
+                aria-label="نسخ المفتاح"
+                className="pointer-events-auto grid h-7 w-7 place-items-center rounded-[7px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
+              >
+                {copied ? (
+                  <Check size={12} className="text-signal" aria-hidden="true" />
+                ) : (
+                  <Copy size={12} aria-hidden="true" />
+                )}
+              </button>
+            </span>
+          </div>
+
+          <p
+            className={cn(
+              'mt-1 text-[9px] leading-4',
+              keyValid ? 'text-muted' : 'text-danger',
+            )}
+          >
+            {keyValid
+              ? `مفتاح ${keyBits} بت · ${charLength} خانة سداسية`
+              : `أدخل ${charLength} خانة سداسية صحيحة (0–9، a–f)`}
+          </p>
         </div>
 
-        <p
-          className={cn(
-            'mt-1 text-[9px] leading-4',
-            keyValid ? 'text-muted' : 'text-danger',
+        <div className="rounded-[11px] border border-hairline bg-white/70 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="iv-field"
+              className="text-[10px] font-medium text-graphite"
+            >
+              {mode === 'CTR' ? 'العدّاد الأولي (Nonce / IV)' : 'متجه التهيئة (IV)'}
+            </label>
+            {needsIv && (
+              <span className="font-mono text-[9px] text-muted tnum">
+                {(ivHex?.length ?? 0)}/32
+              </span>
+            )}
+          </div>
+
+          {needsIv ? (
+            <>
+              <div className="relative mt-1" dir="ltr">
+                <input
+                  id="iv-field"
+                  dir="ltr"
+                  value={ivHex}
+                  onChange={(event) => onIvChange?.(event.target.value)}
+                  disabled={disabled}
+                  maxLength={32}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  placeholder="32 hex · 128-bit IV"
+                  aria-invalid={!ivValid}
+                  className={cn(
+                    'ltr block h-9 w-full rounded-[8px] border bg-white pl-2.5 pr-[4.5rem] font-mono text-[10px] tracking-[0.02em] outline-none transition-colors focus:border-signal',
+                    ivValid ? 'border-hairline' : 'border-danger/40',
+                  )}
+                />
+                <span className="pointer-events-none absolute right-1.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-[7px] bg-white">
+                  <button
+                    type="button"
+                    onClick={onRegenerateIv}
+                    disabled={disabled}
+                    title="توليد IV جديد"
+                    aria-label="توليد IV جديد"
+                    className="pointer-events-auto grid h-6 w-6 place-items-center rounded-[6px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
+                  >
+                    <RefreshCw size={11} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyIv}
+                    disabled={!ivValid || disabled}
+                    title="نسخ متجه التهيئة"
+                    aria-label="نسخ متجه التهيئة"
+                    className="pointer-events-auto grid h-6 w-6 place-items-center rounded-[6px] text-muted transition-colors hover:bg-cloud hover:text-inkstone disabled:opacity-30"
+                  >
+                    {ivCopied ? (
+                      <Check size={11} className="text-signal" aria-hidden="true" />
+                    ) : (
+                      <Copy size={11} aria-hidden="true" />
+                    )}
+                  </button>
+                </span>
+              </div>
+              <p
+                className={cn(
+                  'mt-1 text-[9px] leading-4',
+                  ivValid ? 'text-muted' : 'text-danger',
+                )}
+              >
+                {ivValid
+                  ? mode === 'CBC'
+                    ? '32 خانة سداسية · يُدمج مع الكتلة الأولى ويُحفظ مع الحزمة.'
+                    : '32 خانة سداسية · عدّاد ابتدائي لتوليد تدفق المفاتيح.'
+                  : 'أدخل 32 خانة سداسية صحيحة (128 بت).'}
+              </p>
+            </>
+          ) : (
+            <div
+              id="iv-field"
+              className="mt-1 flex items-center gap-1.5 rounded-[8px] border border-hairline bg-cloud/70 px-2.5 py-2 text-[9px] leading-4 text-muted"
+            >
+              <Info size={11} className="shrink-0" aria-hidden="true" />
+              <span>نمط ECB لا يتطلب IV — كل كتلة تُشفَّر مباشرة بالمفتاح.</span>
+            </div>
           )}
-        >
-          {keyValid
-            ? `مفتاح ${keyBits} بت · ${charLength} خانة سداسية`
-            : `أدخل ${charLength} خانة سداسية صحيحة (0–9، a–f)`}
-        </p>
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-1.5">

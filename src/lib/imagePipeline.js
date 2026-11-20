@@ -170,6 +170,7 @@ export function imageDataToCanvas(imageData) {
   canvas.width = imageData.width;
   canvas.height = imageData.height;
   const ctx = canvas.getContext('2d', { colorSpace: 'srgb' });
+  ctx.imageSmoothingEnabled = false;
   ctx.putImageData(imageData, 0, 0);
   return canvas;
 }
